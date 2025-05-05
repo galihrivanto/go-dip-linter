@@ -1,0 +1,16 @@
+version: "2"
+
+linters:
+  disable-all: true
+  enable:
+    - dip
+
+  settings:
+    custom:
+      dip:
+        type: module
+        description: Detects violations of the Dependency Inversion Principle`.
+        original-url: github.com/galihrivanto/go-dip-linter
+        settings:
+          paths:
+            - name: /some/path
