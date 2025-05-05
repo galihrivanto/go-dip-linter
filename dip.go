@@ -12,7 +12,10 @@ func init() {
 	register.Plugin("dip", New)
 }
 
-type Settings struct{}
+type Settings struct {
+	Include []string `json:"include" yaml:"include"`
+	Exclude []string `json:"exclude" yaml:"exclude"`
+}
 
 type Plugin struct {
 	settings Settings
@@ -42,6 +45,16 @@ func (f *Plugin) GetLoadMode() string {
 }
 
 func (f *Plugin) run(pass *analysis.Pass) (interface{}, error) {
+	includePaths := make(map[string]struct{})
+	for _, path := range f.settings.Include {
+		includePaths[path] = struct{}{}
+	}
+
+	excludePaths := make(map[string]struct{})
+	for _, path := range f.settings.Exclude {
+		excludePaths[path] = struct{}{}
+	}
+
 	for _, file := range pass.Files {
 		ast.Inspect(file, func(n ast.Node) bool {
 			assignStmt, ok := n.(*ast.AssignStmt)
@@ -55,6 +68,7 @@ func (f *Plugin) run(pass *analysis.Pass) (interface{}, error) {
 					continue
 				}
 
+				// Check if the function being called is a constructor
 				funIdent, ok := callExpr.Fun.(*ast.Ident)
 				if !ok {
 					continue
@@ -65,11 +79,17 @@ func (f *Plugin) run(pass *analysis.Pass) (interface{}, error) {
 					continue
 				}
 
+				// Skip external packages
+				if pkg := obj.Pkg(); pkg != nil && pkg.Path() != pass.Pkg.Path() {
+					continue
+				}
+
 				sig, ok := obj.Type().(*types.Signature)
 				if !ok || sig.Results().Len() == 0 {
 					continue
 				}
 
+				// Check if the return type is a concrete type (not an interface)
 				named, ok := sig.Results().At(0).Type().(*types.Named)
 				if !ok {
 					continue
@@ -77,9 +97,26 @@ func (f *Plugin) run(pass *analysis.Pass) (interface{}, error) {
 
 				iface := named.Underlying()
 				if _, isInterface := iface.(*types.Interface); isInterface {
-					return true // returning an interface is okay
+					continue // Skip if the return type is an interface
 				}
 
+				// Check if the function name suggests it's a constructor (e.g., starts with "New")
+				if !isConstructor(funIdent.Name) {
+					continue
+				}
+
+				// Check include/exclude paths
+				filePath := pass.Fset.Position(assignStmt.Pos()).Filename
+				if len(includePaths) > 0 {
+					if _, included := includePaths[filePath]; !included {
+						continue
+					}
+				}
+				if _, excluded := excludePaths[filePath]; excluded {
+					continue
+				}
+
+				// Report if the assigned variable is not an interface
 				if len(assignStmt.Lhs) > i {
 					lhs := assignStmt.Lhs[i]
 					ident, ok := lhs.(*ast.Ident)
@@ -92,7 +129,6 @@ func (f *Plugin) run(pass *analysis.Pass) (interface{}, error) {
 						continue
 					}
 
-					// If assigned var is not an interface
 					if _, ok := lhsType.Underlying().(*types.Interface); !ok {
 						pass.Reportf(assignStmt.Pos(), "direct initialization of concrete service '%s', use interface instead", named.Obj().Name())
 					}
@@ -102,4 +138,9 @@ func (f *Plugin) run(pass *analysis.Pass) (interface{}, error) {
 		})
 	}
 	return nil, nil
+}
+
+// Helper function to check if a function name suggests it's a constructor
+func isConstructor(name string) bool {
+	return len(name) > 3 && name[:3] == "New"
 }
