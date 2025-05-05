@@ -27,20 +27,20 @@ Detect violation of Dependency Inversion Principle by checking instatiation conc
     ```yaml
     version: "2"
 
-linters:
-  disable-all: true
-  enable:
-    - dip
+    linters:
+    disable-all: true
+    enable:
+        - dip
 
-  settings:
-    custom:
-      dip:
-        type: module
-        description: Detects violations of the Dependency Inversion Principle`.
-        original-url: github.com/galihrivanto/go-dip-linter
-        settings:
-          paths:
-            - name: /some/path
+    settings:
+        custom:
+        dip:
+            type: module
+            description: Detects violations of the Dependency Inversion Principle`.
+            original-url: github.com/galihrivanto/go-dip-linter
+            settings:
+            paths:
+                - name: /some/path
     ```
 
 ## Usage
