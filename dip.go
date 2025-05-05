@@ -3,6 +3,7 @@ package linters
 import (
 	"go/ast"
 	"go/types"
+	"path/filepath"
 
 	"github.com/golangci/plugin-module-register/register"
 	"golang.org/x/tools/go/analysis"
@@ -13,8 +14,9 @@ func init() {
 }
 
 type Settings struct {
-	Include []string `json:"include" yaml:"include"`
-	Exclude []string `json:"exclude" yaml:"exclude"`
+	Include      []string `json:"include" yaml:"include"`             // Filepath include patterns
+	Exclude      []string `json:"exclude" yaml:"exclude"`             // Filepath exclude patterns
+	NamePatterns []string `json:"name_patterns" yaml:"name_patterns"` // Constructor name patterns
 }
 
 type Plugin struct {
@@ -100,8 +102,8 @@ func (f *Plugin) run(pass *analysis.Pass) (interface{}, error) {
 					continue // Skip if the return type is an interface
 				}
 
-				// Check if the function name suggests it's a constructor (e.g., starts with "New")
-				if !isConstructor(funIdent.Name) {
+				// Check if the function name matches the constructor name pattern
+				if !f.matchesNamePattern(funIdent.Name) {
 					continue
 				}
 
@@ -140,7 +142,12 @@ func (f *Plugin) run(pass *analysis.Pass) (interface{}, error) {
 	return nil, nil
 }
 
-// Helper function to check if a function name suggests it's a constructor
-func isConstructor(name string) bool {
-	return len(name) > 3 && name[:3] == "New"
+// Helper function to check if a function name matches any of the specified patterns
+func (f *Plugin) matchesNamePattern(name string) bool {
+	for _, pattern := range f.settings.NamePatterns {
+		if matched, _ := filepath.Match(pattern, name); matched {
+			return true
+		}
+	}
+	return false
 }
