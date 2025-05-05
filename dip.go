@@ -3,7 +3,7 @@ package linters
 import (
 	"go/ast"
 	"go/types"
-	"path/filepath"
+	"strings"
 
 	"github.com/golangci/plugin-module-register/register"
 	"golang.org/x/tools/go/analysis"
@@ -59,81 +59,48 @@ func (f *Plugin) run(pass *analysis.Pass) (interface{}, error) {
 
 	for _, file := range pass.Files {
 		ast.Inspect(file, func(n ast.Node) bool {
-			assignStmt, ok := n.(*ast.AssignStmt)
+			funcDecl, ok := n.(*ast.FuncDecl)
 			if !ok {
 				return true
 			}
 
-			for i, rhs := range assignStmt.Rhs {
-				callExpr, ok := rhs.(*ast.CallExpr)
-				if !ok {
-					continue
-				}
+			// Check if the function name suggests it's a constructor
+			if !isConstructor(funcDecl.Name.Name) {
+				return true
+			}
 
-				// Check if the function being called is a constructor
-				funIdent, ok := callExpr.Fun.(*ast.Ident)
-				if !ok {
-					continue
-				}
+			// Skip functions without a return type
+			if funcDecl.Type.Results == nil || len(funcDecl.Type.Results.List) == 0 {
+				return true
+			}
 
-				obj := pass.TypesInfo.ObjectOf(funIdent)
-				if obj == nil {
-					continue
-				}
-
-				// Skip external packages
-				if pkg := obj.Pkg(); pkg != nil && pkg.Path() != pass.Pkg.Path() {
-					continue
-				}
-
-				sig, ok := obj.Type().(*types.Signature)
-				if !ok || sig.Results().Len() == 0 {
+			// Get the return type of the function
+			for _, result := range funcDecl.Type.Results.List {
+				resultType := pass.TypesInfo.TypeOf(result.Type)
+				if resultType == nil {
 					continue
 				}
 
 				// Check if the return type is a concrete type (not an interface)
-				named, ok := sig.Results().At(0).Type().(*types.Named)
-				if !ok {
-					continue
-				}
-
-				iface := named.Underlying()
-				if _, isInterface := iface.(*types.Interface); isInterface {
-					continue // Skip if the return type is an interface
-				}
-
-				// Check if the function name matches the constructor name pattern
-				if !f.matchesNamePattern(funIdent.Name) {
-					continue
-				}
-
-				// Check include/exclude paths
-				filePath := pass.Fset.Position(assignStmt.Pos()).Filename
-				if len(includePaths) > 0 {
-					if _, included := includePaths[filePath]; !included {
-						continue
+				if _, isInterface := resultType.Underlying().(*types.Interface); !isInterface {
+					// Check include/exclude paths
+					filePath := pass.Fset.Position(funcDecl.Pos()).Filename
+					if len(includePaths) > 0 {
+						if _, included := includePaths[filePath]; !included {
+							continue
+						}
 					}
-				}
-				if _, excluded := excludePaths[filePath]; excluded {
-					continue
-				}
-
-				// Report if the assigned variable is not an interface
-				if len(assignStmt.Lhs) > i {
-					lhs := assignStmt.Lhs[i]
-					ident, ok := lhs.(*ast.Ident)
-					if !ok {
+					if _, excluded := excludePaths[filePath]; excluded {
 						continue
 					}
 
-					lhsType := pass.TypesInfo.TypeOf(ident)
-					if lhsType == nil {
+					// Check if the function name matches any constructor name pattern
+					if !f.matchesNamePattern(funcDecl.Name.Name) {
 						continue
 					}
 
-					if _, ok := lhsType.Underlying().(*types.Interface); !ok {
-						pass.Reportf(assignStmt.Pos(), "direct initialization of concrete service '%s', use interface instead", named.Obj().Name())
-					}
+					// Report the violation
+					pass.Reportf(funcDecl.Pos(), "constructor '%s' returns a concrete type '%s', use an interface instead", funcDecl.Name.Name, resultType.String())
 				}
 			}
 			return true
@@ -142,12 +109,24 @@ func (f *Plugin) run(pass *analysis.Pass) (interface{}, error) {
 	return nil, nil
 }
 
+// Helper function to check if a function name suggests it's a constructor
+func isConstructor(name string) bool {
+	return len(name) > 3 && strings.HasPrefix(name, "New")
+}
+
 // Helper function to check if a function name matches any of the specified patterns
 func (f *Plugin) matchesNamePattern(name string) bool {
+	// Skip the check if no patterns are defined
+	if len(f.settings.NamePatterns) == 0 {
+		return true
+	}
+
+	// match the name with the patterns
 	for _, pattern := range f.settings.NamePatterns {
-		if matched, _ := filepath.Match(pattern, name); matched {
+		if strings.Contains(strings.ToLower(name), strings.ToLower(pattern)) {
 			return true
 		}
 	}
+
 	return false
 }
