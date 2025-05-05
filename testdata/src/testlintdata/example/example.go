@@ -1,32 +1,44 @@
 package example
 
-import "fmt"
+// Concrete types
+type Service struct{}
+type Manager struct{}
+type Helper struct{}
 
-type ServiceA struct{}
+// Interfaces
+type IService interface{}
+type IManager interface{}
 
-func NewServiceA() ServiceA {
-	return ServiceA{}
+// Constructor returning a concrete type (should be flagged if it matches NamePatterns)
+func NewService() Service {
+	return Service{}
 }
 
-type IServiceB interface {
-	Echo()
+// Constructor returning an interface (should not be flagged)
+func NewServiceInterface() IService {
+	return &Service{}
 }
 
-type ServiceB struct{}
-
-func (s ServiceB) Echo() {
-	fmt.Println("Hello from ServiceB")
+// Constructor returning a concrete type (should be flagged if it matches NamePatterns)
+func NewManager() Manager {
+	return Manager{}
 }
 
-func NewServiceB() IServiceB {
-	return &ServiceB{}
+// Constructor returning an interface (should not be flagged)
+func NewManagerInterface() IManager {
+	return &Manager{}
 }
 
-func main() {
-	var b IServiceB = NewServiceB() // should not trigger linter
-	b.Echo()
+// Constructor returning a concrete type but does not match NamePatterns (should not be flagged)
+func CreateHelper() Helper {
+	return Helper{}
+}
 
-	a := NewServiceA() // should trigger linter
-	_ = a
+// Constructor returning an interface but does not match NamePatterns (should not be flagged)
+func CreateHelperInterface() IService {
+	return &Service{}
+}
 
+func Add(a, b int) int {
+	return a + b
 }

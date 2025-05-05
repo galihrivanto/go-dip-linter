@@ -3,6 +3,7 @@ package linters
 import (
 	"go/ast"
 	"go/types"
+	"path/filepath"
 	"strings"
 
 	"github.com/golangci/plugin-module-register/register"
@@ -85,13 +86,30 @@ func (f *Plugin) run(pass *analysis.Pass) (interface{}, error) {
 				if _, isInterface := resultType.Underlying().(*types.Interface); !isInterface {
 					// Check include/exclude paths
 					filePath := pass.Fset.Position(funcDecl.Pos()).Filename
-					if len(includePaths) > 0 {
-						if _, included := includePaths[filePath]; !included {
-							continue
+
+					// Convert absolute filePath to a relative path
+					relPath, err := filepath.Rel(pass.Pkg.Path(), filePath)
+					if err != nil {
+						// If conversion fails, fallback to absolute path
+						relPath = filePath
+					}
+
+					// Check include paths
+					for includePath := range includePaths {
+						if strings.HasPrefix(relPath, includePath) {
+							goto CheckExclude
 						}
 					}
-					if _, excluded := excludePaths[filePath]; excluded {
+					if len(includePaths) > 0 {
 						continue
+					}
+
+					// Check exclude paths
+				CheckExclude:
+					for excludePath := range excludePaths {
+						if strings.HasPrefix(relPath, excludePath) {
+							continue
+						}
 					}
 
 					// Check if the function name matches any constructor name pattern

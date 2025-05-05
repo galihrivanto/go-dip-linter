@@ -14,12 +14,14 @@ Detect violation of Dependency Inversion Principle by checking instatiation conc
     go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
     ```
 
-2. Clone this repository:
-
-    ```bash
-    git clone https://github.com/galihrivanto/go-dip-linter.git
-    cd go-dip-linter
-    go build -o go-dip-linter .
+2. See how to enable [custom linter](https://golangci-lint.run/plugins/module-plugins/)
+sample `.custom-gcl.yml`
+    ```yaml
+    version: v1.64.8
+    name: custom-golangci-lint
+    plugins:
+    - module: 'github.com/galihrivanto/go-dip-linter'
+        path: /home/galih/codes/personal/go-dip-linter
     ```
 
 3. Add the plugin to your `golangci-lint` configuration file (`.golangci.yml`):
@@ -39,8 +41,8 @@ Detect violation of Dependency Inversion Principle by checking instatiation conc
             description: Detects violations of the Dependency Inversion Principle`.
             original-url: github.com/galihrivanto/go-dip-linter
             settings:
-            paths:
-                - name: /some/path
+              name_pattern:
+                - service
     ```
 
 ## Usage
